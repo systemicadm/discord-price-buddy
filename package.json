@@ -1,0 +1,22 @@
+{
+  "name": "discord-price-buddy",
+  "version": "1.0.0",
+  "description": "A discord bot for users to manage pricebuddy.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --check index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://localhost:26831/systemicadm/discord-price-buddy"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^18.0.9"
+  }
+}
