@@ -3,8 +3,18 @@ A Discord bot for approved users to manage PriceBuddy through API calls.
 
 ## Features
 - Restricts commands to a configured allowlist of Discord user IDs
-- Supports `!pb status`, `!pb sync`, and `!pb price <sku>` commands
-- Exposes equivalent slash commands for `status`, `sync`, and `price`
+- Supports rich PriceBuddy actions via Discord messages and slash commands:
+  - `!pb status`
+  - `!pb sync`
+  - `!pb price <sku>`
+  - `!pb search <term>`
+  - `!pb history <sku>`
+  - `!pb watch <sku> [target]`
+  - `!pb unwatch <sku>`
+  - `!pb watchlist`
+  - `!pb alerts`
+  - `!pb alert <id>`
+- Falls back across common PriceBuddy route names for price, history, watchlist, and alert requests
 - Calls a configured PriceBuddy API using an API base URL and optional bearer/API key
 
 ## Setup
