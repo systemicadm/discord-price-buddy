@@ -5,6 +5,66 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
+const LOG_LEVELS = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3,
+};
+
+const configuredLogLevel = (process.env.LOG_LEVEL || 'info').toLowerCase();
+const activeLogLevel = Object.prototype.hasOwnProperty.call(LOG_LEVELS, configuredLogLevel)
+  ? LOG_LEVELS[configuredLogLevel]
+  : LOG_LEVELS.info;
+const logApiDetails = process.env.LOG_API_DETAILS === '1';
+let apiRequestCounter = 0;
+
+function serializeError(error) {
+  if (!error) {
+    return { message: 'Unknown error' };
+  }
+
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    code: error.code,
+  };
+}
+
+function log(level, message, metadata = {}) {
+  const levelName = LOG_LEVELS[level] === undefined ? 'info' : level;
+  if (LOG_LEVELS[levelName] > activeLogLevel) {
+    return;
+  }
+
+  const entry = {
+    timestamp: new Date().toISOString(),
+    level: levelName,
+    message,
+    ...metadata,
+  };
+
+  const line = JSON.stringify(entry);
+
+  if (levelName === 'error') {
+    console.error(line);
+    return;
+  }
+
+  if (levelName === 'warn') {
+    console.warn(line);
+    return;
+  }
+
+  console.log(line);
+}
+
+function nextApiRequestId() {
+  apiRequestCounter += 1;
+  return `api-${apiRequestCounter}`;
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -46,10 +106,21 @@ async function callPriceBuddyApi(path, method = 'GET', body = undefined, query =
     throw new Error('PRICEBUDDY_API_URL is not configured.');
   }
 
+  const requestId = nextApiRequestId();
+  const startTime = Date.now();
   const url = buildApiUrl(path, query);
   const headers = {
     'Content-Type': 'application/json',
   };
+
+  log('debug', 'PriceBuddy API request started', {
+    requestId,
+    path,
+    method,
+    queryKeys: Object.keys(query),
+    hasBody: body !== undefined,
+    apiBaseUrl,
+  });
 
   if (apiKey) {
     headers.Authorization = 'Bearer ' + apiKey;
@@ -64,8 +135,24 @@ async function callPriceBuddyApi(path, method = 'GET', body = undefined, query =
 
   if (!response.ok) {
     const text = await response.text();
+    log('error', 'PriceBuddy API request failed', {
+      requestId,
+      path,
+      method,
+      status: response.status,
+      durationMs: Date.now() - startTime,
+      responseBodyPreview: text ? text.slice(0, 500) : response.statusText,
+    });
     throw new Error(`PriceBuddy API request failed (${response.status}): ${text || response.statusText}`);
   }
+
+  log('info', 'PriceBuddy API request succeeded', {
+    requestId,
+    path,
+    method,
+    status: response.status,
+    durationMs: Date.now() - startTime,
+  });
 
   if (response.status === 204) {
     return null;
@@ -73,10 +160,27 @@ async function callPriceBuddyApi(path, method = 'GET', body = undefined, query =
 
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
-    return response.json();
+    const jsonResult = await response.json();
+    if (logApiDetails) {
+      log('debug', 'PriceBuddy API response payload', {
+        requestId,
+        path,
+        payload: jsonResult,
+      });
+    }
+
+    return jsonResult;
   }
 
   const text = await response.text();
+  if (logApiDetails && text) {
+    log('debug', 'PriceBuddy API response text', {
+      requestId,
+      path,
+      payload: text.slice(0, 500),
+    });
+  }
+
   return text === '' ? null : text;
 }
 
@@ -85,9 +189,19 @@ async function tryApiRoutes(routes, method = 'GET', body = undefined, query = {}
 
   for (const route of routes) {
     try {
-      return await callPriceBuddyApi(route, method, body, query);
+      const result = await callPriceBuddyApi(route, method, body, query);
+      log('debug', 'PriceBuddy API route succeeded', {
+        route,
+        method,
+      });
+      return result;
     } catch (error) {
       lastError = error;
+      log('warn', 'PriceBuddy API route failed, trying next fallback route', {
+        route,
+        method,
+        error: serializeError(error),
+      });
     }
   }
 
@@ -181,13 +295,59 @@ function formatResult(result) {
 }
 
 client.on('ready', () => {
+  log('info', 'Discord client ready', {
+    userTag: client.user?.tag,
+    userId: client.user?.id,
+  });
   console.log(`Logged in as ${client.user.tag}`);
+});
+
+client.on('warn', (message) => {
+  log('warn', 'Discord client warning', { message });
+});
+
+client.on('error', (error) => {
+  log('error', 'Discord client error', { error: serializeError(error) });
+});
+
+client.on('shardDisconnect', (event, shardId) => {
+  log('warn', 'Discord shard disconnected', {
+    shardId,
+    code: event.code,
+    reason: event.reason,
+    wasClean: event.wasClean,
+  });
+});
+
+client.on('shardReconnecting', (shardId) => {
+  log('warn', 'Discord shard reconnecting', { shardId });
+});
+
+client.on('shardResume', (shardId, replayedEvents) => {
+  log('info', 'Discord shard resumed', { shardId, replayedEvents });
+});
+
+client.on('shardError', (error, shardId) => {
+  log('error', 'Discord shard error', {
+    shardId,
+    error: serializeError(error),
+  });
+});
+
+client.on('invalidated', () => {
+  log('error', 'Discord session invalidated');
 });
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.content.startsWith('!pb')) {
     return;
   }
+
+  log('info', 'Discord message command received', {
+    userId: message.author?.id,
+    guildId: message.guildId,
+    channelId: message.channelId,
+  });
 
   try {
     ensureApprovedUser(message);
@@ -304,7 +464,12 @@ client.on('messageCreate', async (message) => {
 
     await message.reply('Unknown command. Try `!pb help` for a list of actions.');
   } catch (error) {
-    console.error('Message command failed:', error);
+    log('error', 'Discord message command failed', {
+      userId: message.author?.id,
+      guildId: message.guildId,
+      channelId: message.channelId,
+      error: serializeError(error),
+    });
     await message.reply(`Request failed: ${error.message}`);
   }
 });
@@ -316,6 +481,12 @@ client.on('interactionCreate', async (interaction) => {
 
   try {
     ensureApprovedUser(interaction);
+    log('info', 'Discord slash command received', {
+      userId: interaction.user?.id,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      commandName: interaction.commandName,
+    });
 
     if (interaction.commandName === 'status') {
       const result = await callPriceBuddyApi('/status');
@@ -447,15 +618,27 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
   } catch (error) {
-    console.error('Interaction failed:', error);
+    log('error', 'Discord slash command failed', {
+      userId: interaction.user?.id,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      commandName: interaction.commandName,
+      error: serializeError(error),
+    });
     await interaction.reply({ content: `Request failed: ${error.message}`, ephemeral: true });
   }
 });
 
 async function registerSlashCommands() {
   if (!process.env.DISCORD_TOKEN || !process.env.DISCORD_CLIENT_ID) {
+    log('warn', 'Skipping slash command registration because token or client ID is missing');
     return;
   }
+
+  log('info', 'Registering Discord slash commands', {
+    commandCount: 10,
+    clientId: process.env.DISCORD_CLIENT_ID,
+  });
 
   const commands = [
     { name: 'status', description: 'Check the PriceBuddy service status' },
@@ -509,18 +692,33 @@ async function registerSlashCommands() {
   if (!response.ok) {
     throw new Error(`Failed to register slash commands: ${response.status} ${await response.text()}`);
   }
+
+  log('info', 'Discord slash command registration succeeded');
 }
 
 (async () => {
   try {
+    log('info', 'Bot startup initiated', {
+      hasDiscordToken: Boolean(process.env.DISCORD_TOKEN),
+      hasDiscordClientId: Boolean(process.env.DISCORD_CLIENT_ID),
+      hasPriceBuddyApiUrl: Boolean(process.env.PRICEBUDDY_API_URL),
+      hasPriceBuddyApiKey: Boolean(process.env.PRICEBUDDY_API_KEY),
+      approvedUserCount: approvedUserIds.size,
+      logLevel: configuredLogLevel,
+      logApiDetails,
+    });
+
     if (!process.env.DISCORD_TOKEN) {
       throw new Error('DISCORD_TOKEN is required. Copy .env.example to .env and add your token.');
     }
 
     await registerSlashCommands();
     await client.login(process.env.DISCORD_TOKEN);
+    log('info', 'Discord login call completed');
   } catch (error) {
-    console.error('Bot startup failed:', error);
+    log('error', 'Bot startup failed', {
+      error: serializeError(error),
+    });
     process.exit(1);
   }
 })();
