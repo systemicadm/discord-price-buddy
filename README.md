@@ -64,10 +64,284 @@ Use these settings in the Discord Developer Portal for this bot to start and ope
 - Remove `GatewayIntentBits.MessageContent` from the code and use slash commands only.
 - Then you can disable `Message Content Intent`.
 
+## Command Reference
+The bot supports both message commands (`!pb ...`) and slash commands (`/status`, `/price`, etc.).
+
+Notes:
+- Message command examples assume your prefix is `!pb`.
+- Most command results are the raw PriceBuddy API response formatted as JSON text.
+- Exact keys can vary depending on your PriceBuddy backend.
+
+### `help`
+Shows available commands and quick usage hints.
+
+Message command:
+```text
+!pb help
+```
+
+Expected return:
+```text
+Available commands: status, sync, price <sku>, search <term>, history <sku>, watch <sku> [target], unwatch <sku>, watchlist, alerts, alert <id>
+```
+
+### `status`
+Checks service health/status from PriceBuddy.
+
+Message command:
+```text
+!pb status
+```
+
+Slash command:
+```text
+/status
+```
+
+Expected return example:
+```json
+{
+  "status": "ok",
+  "service": "pricebuddy",
+  "timestamp": "2026-10-25T20:40:12Z"
+}
+```
+
+### `sync`
+Triggers a PriceBuddy sync job.
+
+Message command:
+```text
+!pb sync
+```
+
+Slash command:
+```text
+/sync
+```
+
+Expected return example:
+```json
+{
+  "accepted": true,
+  "jobId": "sync_12345",
+  "source": "discord"
+}
+```
+
+### `price <sku>`
+Returns current pricing data for a specific SKU/product ID.
+
+Message command:
+```text
+!pb price ABC-123
+```
+
+Slash command:
+```text
+/price sku:ABC-123
+```
+
+Expected return example:
+```json
+{
+  "sku": "ABC-123",
+  "price": 19.99,
+  "currency": "USD",
+  "updatedAt": "2026-10-25T20:39:00Z"
+}
+```
+
+### `search <term>`
+Searches products by text term.
+
+Message command:
+```text
+!pb search wireless mouse
+```
+
+Slash command:
+```text
+/search term:wireless mouse
+```
+
+Expected return example:
+```json
+[
+  {
+    "sku": "MOUSE-001",
+    "name": "Wireless Mouse Pro",
+    "price": 29.99
+  },
+  {
+    "sku": "MOUSE-002",
+    "name": "Wireless Mouse Lite",
+    "price": 19.99
+  }
+]
+```
+
+### `history <sku>`
+Returns historical pricing timeline for a SKU.
+
+Message command:
+```text
+!pb history ABC-123
+```
+
+Slash command:
+```text
+/history sku:ABC-123
+```
+
+Expected return example:
+```json
+{
+  "sku": "ABC-123",
+  "history": [
+    { "date": "2026-10-01", "price": 24.99 },
+    { "date": "2026-10-15", "price": 21.99 },
+    { "date": "2026-10-25", "price": 19.99 }
+  ]
+}
+```
+
+### `watch <sku> [target]`
+Creates a watch entry for a SKU. Optional target can be a price or note, depending on backend behavior.
+
+Message command:
+```text
+!pb watch ABC-123
+!pb watch ABC-123 15.00
+```
+
+Slash command:
+```text
+/watch sku:ABC-123
+/watch sku:ABC-123 target:15.00
+```
+
+Expected return example:
+```json
+{
+  "created": true,
+  "sku": "ABC-123",
+  "target": "15.00"
+}
+```
+
+### `unwatch <sku>`
+Removes an existing watch for a SKU.
+
+Message command:
+```text
+!pb unwatch ABC-123
+```
+
+Slash command:
+```text
+/unwatch sku:ABC-123
+```
+
+Expected return example:
+```json
+{
+  "removed": true,
+  "sku": "ABC-123"
+}
+```
+
+### `watchlist`
+Lists all currently watched SKUs.
+
+Message command:
+```text
+!pb watchlist
+```
+
+Slash command:
+```text
+/watchlist
+```
+
+Expected return example:
+```json
+[
+  { "sku": "ABC-123", "target": "15.00" },
+  { "sku": "XYZ-999", "target": null }
+]
+```
+
+### `alerts`
+Lists active alerts from PriceBuddy.
+
+Message command:
+```text
+!pb alerts
+```
+
+Slash command:
+```text
+/alerts
+```
+
+Expected return example:
+```json
+[
+  {
+    "id": "alert_101",
+    "sku": "ABC-123",
+    "trigger": "price_below",
+    "value": 15.0,
+    "active": true
+  }
+]
+```
+
+### `alert <id>`
+Returns one specific alert by ID.
+
+Message command:
+```text
+!pb alert alert_101
+```
+
+Slash command:
+```text
+/alert id:alert_101
+```
+
+Expected return example:
+```json
+{
+  "id": "alert_101",
+  "sku": "ABC-123",
+  "trigger": "price_below",
+  "value": 15.0,
+  "createdAt": "2026-10-20T10:00:00Z",
+  "active": true
+}
+```
+
+### Common command errors
+- Unauthorized user:
+```text
+Request failed: You are not authorized to use this bot.
+```
+- Missing argument example:
+```text
+Usage: !pb price <sku>
+```
+- API base URL misconfigured example:
+```text
+Request failed: PriceBuddy API returned an HTML error page. Check PRICEBUDDY_API_URL and ensure it points to the API base URL, not a website route.
+```
+
 ## Environment variables
 - `DISCORD_TOKEN`: Discord bot token
 - `DISCORD_CLIENT_ID`: Discord application ID used for slash command registration
-- `PRICEBUDDY_API_URL`: Base URL for the PriceBuddy API, e.g. `https://api.example.com`
+- `PRICEBUDDY_API_URL`: Base URL for the PriceBuddy API, e.g. `https://api.example.com` or `https://api.example.com/api`.
+  - This must be the API base path. If this points to a website route, `!pb status` can return a 404 HTML page.
 - `PRICEBUDDY_API_KEY`: API key or bearer token for the PriceBuddy API
 - `APPROVED_USER_IDS`: Comma-separated list of allowed Discord user IDs
 - `LOG_LEVEL`: Log verbosity (`error`, `warn`, `info`, or `debug`). Default is `info`.
@@ -87,3 +361,12 @@ Runtime logs are emitted as newline-delimited JSON, which works well with Pelica
 - Command flow logged:
   - Incoming message/slash commands
   - Handler failures with context (user, guild, channel, command)
+
+## Troubleshooting
+- Error: `PriceBuddy API request failed (404)` with HTML in logs
+  - Cause: `PRICEBUDDY_API_URL` likely points at a website route instead of the API base path.
+  - Fix: Set `PRICEBUDDY_API_URL` to the API base URL and retest `!pb status`.
+
+- Error: `Invalid Form Body content[BASE_TYPE_MAX_LENGTH]`
+  - Cause: A very large error body was being echoed to Discord.
+  - Status: The bot now truncates and sanitizes user-facing error messages to stay within Discord limits.

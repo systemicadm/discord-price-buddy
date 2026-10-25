@@ -17,6 +17,7 @@ const activeLogLevel = Object.prototype.hasOwnProperty.call(LOG_LEVELS, configur
   ? LOG_LEVELS[configuredLogLevel]
   : LOG_LEVELS.info;
 const logApiDetails = process.env.LOG_API_DETAILS === '1';
+const MAX_DISCORD_REPLY_LENGTH = 1900;
 let apiRequestCounter = 0;
 
 function serializeError(error) {
@@ -63,6 +64,39 @@ function log(level, message, metadata = {}) {
 function nextApiRequestId() {
   apiRequestCounter += 1;
   return `api-${apiRequestCounter}`;
+}
+
+function isHtmlDocument(text) {
+  if (!text) {
+    return false;
+  }
+
+  const normalized = text.trim().toLowerCase();
+  return normalized.startsWith('<!doctype html') || normalized.startsWith('<html');
+}
+
+function toSingleLine(text) {
+  return String(text).replace(/\s+/g, ' ').trim();
+}
+
+function truncateForDiscord(text, maxLength = MAX_DISCORD_REPLY_LENGTH) {
+  if (!text || text.length <= maxLength) {
+    return text;
+  }
+
+  const suffix = '...';
+  return text.slice(0, Math.max(0, maxLength - suffix.length)) + suffix;
+}
+
+function getUserFacingErrorMessage(error) {
+  const rawMessage = error?.message || 'Unknown error';
+  let message = rawMessage;
+
+  if (isHtmlDocument(rawMessage) || rawMessage.toLowerCase().includes('<html')) {
+    message = 'PriceBuddy API returned an HTML error page. Check PRICEBUDDY_API_URL and ensure it points to the API base URL, not a website route.';
+  }
+
+  return truncateForDiscord(`Request failed: ${toSingleLine(message)}`);
 }
 
 const client = new Client({
@@ -135,15 +169,20 @@ async function callPriceBuddyApi(path, method = 'GET', body = undefined, query =
 
   if (!response.ok) {
     const text = await response.text();
+    const responsePreview = text ? text.slice(0, 500) : response.statusText;
+    const responseSummary = isHtmlDocument(text)
+      ? 'Received an HTML error page instead of API JSON. Verify PRICEBUDDY_API_URL points to your API base.'
+      : toSingleLine((text || response.statusText || '').slice(0, 300));
+
     log('error', 'PriceBuddy API request failed', {
       requestId,
       path,
       method,
       status: response.status,
       durationMs: Date.now() - startTime,
-      responseBodyPreview: text ? text.slice(0, 500) : response.statusText,
+      responseBodyPreview: responsePreview,
     });
-    throw new Error(`PriceBuddy API request failed (${response.status}): ${text || response.statusText}`);
+    throw new Error(`PriceBuddy API request failed (${response.status}): ${responseSummary}`);
   }
 
   log('info', 'PriceBuddy API request succeeded', {
@@ -213,6 +252,15 @@ async function getPriceForSku(sku) {
     `/prices/${encodeURIComponent(sku)}`,
     `/products/${encodeURIComponent(sku)}`,
     `/catalog/${encodeURIComponent(sku)}`,
+  ]);
+}
+
+async function getStatus() {
+  return tryApiRoutes([
+    '/status',
+    '/api/status',
+    '/health',
+    '/api/health',
   ]);
 }
 
@@ -366,7 +414,7 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'status') {
-      const result = await callPriceBuddyApi('/status');
+      const result = await getStatus();
       await message.reply(`Status: ${formatResult(result)}`);
       return;
     }
@@ -470,7 +518,7 @@ client.on('messageCreate', async (message) => {
       channelId: message.channelId,
       error: serializeError(error),
     });
-    await message.reply(`Request failed: ${error.message}`);
+    await message.reply(getUserFacingErrorMessage(error));
   }
 });
 
@@ -489,7 +537,7 @@ client.on('interactionCreate', async (interaction) => {
     });
 
     if (interaction.commandName === 'status') {
-      const result = await callPriceBuddyApi('/status');
+      const result = await getStatus();
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -625,7 +673,13 @@ client.on('interactionCreate', async (interaction) => {
       commandName: interaction.commandName,
       error: serializeError(error),
     });
-    await interaction.reply({ content: `Request failed: ${error.message}`, ephemeral: true });
+    const errorMessage = getUserFacingErrorMessage(error);
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: errorMessage, ephemeral: true });
+      return;
+    }
+
+    await interaction.reply({ content: errorMessage, ephemeral: true });
   }
 });
 
@@ -729,6 +783,7 @@ module.exports = {
   callPriceBuddyApi,
   ensureApprovedUser,
   getPriceForSku,
+  getStatus,
   getPriceHistory,
   getWatchlist,
   getAlerts,
