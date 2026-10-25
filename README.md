@@ -370,3 +370,7 @@ Runtime logs are emitted as newline-delimited JSON, which works well with Pelica
 - Error: `Invalid Form Body content[BASE_TYPE_MAX_LENGTH]`
   - Cause: A very large error body was being echoed to Discord.
   - Status: The bot now truncates and sanitizes user-facing error messages to stay within Discord limits.
+
+## License
+This project is licensed under the GNU General Public License v3.0.
+See the `LICENSE` file for the full text.
