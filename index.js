@@ -370,6 +370,205 @@ function formatResult(result) {
   return JSON.stringify(result, null, 2);
 }
 
+function unwrapData(result) {
+  if (result && typeof result === 'object' && result.data !== undefined) {
+    return result.data;
+  }
+
+  return result;
+}
+
+function toArray(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  return [];
+}
+
+function formatMoney(value, currency) {
+  if (value === null || value === undefined || value === '') {
+    return 'n/a';
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return String(value);
+  }
+
+  if (!currency) {
+    return parsed.toFixed(2);
+  }
+
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      currencyDisplay: 'narrowSymbol',
+    }).format(parsed);
+  } catch (_error) {
+    return `${parsed.toFixed(2)} ${currency}`;
+  }
+}
+
+function friendlyStatus(result) {
+  const payload = unwrapData(result);
+  if (!payload || typeof payload !== 'object') {
+    return `Status:\n${formatResult(result)}`;
+  }
+
+  const status = payload.status || payload.state || 'ok';
+  const version = payload.app_version || payload.version;
+  const capabilities = payload.capabilities && typeof payload.capabilities === 'object'
+    ? Object.keys(payload.capabilities).filter((key) => payload.capabilities[key])
+    : [];
+
+  const lines = [
+    `Service status: ${status}`,
+  ];
+
+  if (version) {
+    lines.push(`Version: ${version}`);
+  }
+
+  if (capabilities.length > 0) {
+    lines.push(`Capabilities: ${capabilities.slice(0, 6).join(', ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+function friendlyPrice(sku, result) {
+  const payload = unwrapData(result);
+  const item = Array.isArray(payload) ? payload[0] : payload;
+  if (!item || typeof item !== 'object') {
+    return `Price for ${sku}:\n${formatResult(result)}`;
+  }
+
+  const title = item.title || item.name || `Product ${sku}`;
+  const price = item.price ?? item.current_price ?? item.currentPrice;
+  const currency = item.currency || item.currency_code;
+  const store = item.store?.name || item.store_name || item.store;
+  const updated = item.updated_at || item.updatedAt || item.last_checked_at;
+
+  const lines = [
+    `Price for ${title}`,
+    `Current: ${formatMoney(price, currency)}`,
+  ];
+
+  if (store) {
+    lines.push(`Store: ${store}`);
+  }
+
+  if (updated) {
+    lines.push(`Updated: ${updated}`);
+  }
+
+  return lines.join('\n');
+}
+
+function pickCollection(result) {
+  const payload = unwrapData(result);
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload && typeof payload === 'object') {
+    if (Array.isArray(payload.items)) {
+      return payload.items;
+    }
+    if (Array.isArray(payload.results)) {
+      return payload.results;
+    }
+    if (Array.isArray(payload.history)) {
+      return payload.history;
+    }
+  }
+
+  return [];
+}
+
+function friendlySearch(term, result) {
+  const items = pickCollection(result);
+  if (items.length === 0) {
+    return `No products found for "${term}".`;
+  }
+
+  const lines = [`Found ${items.length} result(s) for "${term}":`];
+  items.slice(0, 8).forEach((item, index) => {
+    const title = item?.title || item?.name || item?.sku || 'Untitled product';
+    const price = formatMoney(item?.price ?? item?.current_price ?? item?.currentPrice, item?.currency);
+    lines.push(`${index + 1}. ${title} (${price})`);
+  });
+
+  if (items.length > 8) {
+    lines.push(`...and ${items.length - 8} more`);
+  }
+
+  return lines.join('\n');
+}
+
+function friendlyHistory(sku, result) {
+  const payload = unwrapData(result);
+  const history = Array.isArray(payload?.history)
+    ? payload.history
+    : Array.isArray(payload)
+      ? payload
+      : [];
+
+  if (history.length === 0) {
+    return `No price history found for ${sku}.`;
+  }
+
+  const latest = history[history.length - 1];
+  const previous = history[Math.max(history.length - 2, 0)];
+  const latestPrice = latest?.price ?? latest?.value;
+  const previousPrice = previous?.price ?? previous?.value;
+  const currency = latest?.currency || previous?.currency;
+
+  const lines = [
+    `History for ${sku}`,
+    `Entries: ${history.length}`,
+    `Latest: ${formatMoney(latestPrice, currency)} (${latest?.date || latest?.timestamp || 'unknown date'})`,
+  ];
+
+  if (history.length > 1) {
+    lines.push(`Previous: ${formatMoney(previousPrice, currency)} (${previous?.date || previous?.timestamp || 'unknown date'})`);
+  }
+
+  return lines.join('\n');
+}
+
+function friendlyCollection(title, result) {
+  const items = pickCollection(result);
+  if (items.length === 0) {
+    return `${title}: none found.`;
+  }
+
+  const lines = [`${title}: ${items.length} item(s)`];
+  items.slice(0, 10).forEach((item, index) => {
+    const name = item?.title || item?.name || item?.sku || item?.id || `item-${index + 1}`;
+    const state = item?.active !== undefined ? (item.active ? 'active' : 'inactive') : null;
+    lines.push(`${index + 1}. ${name}${state ? ` (${state})` : ''}`);
+  });
+
+  if (items.length > 10) {
+    lines.push(`...and ${items.length - 10} more`);
+  }
+
+  return lines.join('\n');
+}
+
+function friendlyAction(prefix, result) {
+  const payload = unwrapData(result);
+  if (!payload || typeof payload !== 'object') {
+    return `${prefix} complete.`;
+  }
+
+  const message = payload.message || payload.status || payload.result;
+  return `${prefix}: ${message || 'ok'}`;
+}
+
 client.on('ready', () => {
   log('info', 'Discord client ready', {
     userTag: client.user?.tag,
@@ -443,13 +642,13 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'status') {
       const result = await getStatus();
-      await message.reply(`Status: ${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlyStatus(result)));
       return;
     }
 
     if (command === 'sync') {
       const result = await callPriceBuddyApi('/sync', 'POST', { source: 'discord' });
-      await message.reply(`Sync started: ${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlyAction('Sync started', result)));
       return;
     }
 
@@ -461,7 +660,7 @@ client.on('messageCreate', async (message) => {
       }
 
       const result = await getPriceForSku(sku);
-      await message.reply(`Price for ${sku}:\n\n${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlyPrice(sku, result)));
       return;
     }
 
@@ -473,7 +672,7 @@ client.on('messageCreate', async (message) => {
       }
 
       const result = await searchProducts(term);
-      await message.reply(`Search results for "${term}":\n\n${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlySearch(term, result)));
       return;
     }
 
@@ -485,7 +684,7 @@ client.on('messageCreate', async (message) => {
       }
 
       const result = await getPriceHistory(sku);
-      await message.reply(`Price history for ${sku}:\n\n${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlyHistory(sku, result)));
       return;
     }
 
@@ -498,7 +697,7 @@ client.on('messageCreate', async (message) => {
 
       const target = args[2];
       const result = await addWatch(sku, target);
-      await message.reply(`Watch created for ${sku}:\n\n${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlyAction(`Watch created for ${sku}`, result)));
       return;
     }
 
@@ -510,19 +709,19 @@ client.on('messageCreate', async (message) => {
       }
 
       const result = await removeWatch(sku);
-      await message.reply(`Removed watch for ${sku}:\n\n${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlyAction(`Removed watch for ${sku}`, result)));
       return;
     }
 
     if (command === 'watchlist') {
       const result = await getWatchlist();
-      await message.reply(`Watchlist:\n\n${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlyCollection('Watchlist', result)));
       return;
     }
 
     if (command === 'alerts') {
       const result = await getAlerts();
-      await message.reply(`Alerts:\n\n${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlyCollection('Alerts', result)));
       return;
     }
 
@@ -534,7 +733,7 @@ client.on('messageCreate', async (message) => {
       }
 
       const result = await getAlert(id);
-      await message.reply(`Alert ${id}:\n\n${formatResult(result)}`);
+      await message.reply(truncateForDiscord(friendlyAction(`Alert ${id}`, result)));
       return;
     }
 
@@ -570,7 +769,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle('PriceBuddy status')
-            .setDescription(formatResult(result))
+            .setDescription(truncateForDiscord(friendlyStatus(result)))
             .setColor(0x00ae86),
         ],
       });
@@ -584,7 +783,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle(`Price for ${sku}`)
-            .setDescription(formatResult(result))
+            .setDescription(truncateForDiscord(friendlyPrice(sku, result)))
             .setColor(0x00ae86),
         ],
       });
@@ -598,7 +797,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle(`Search results for ${term}`)
-            .setDescription(formatResult(result))
+            .setDescription(truncateForDiscord(friendlySearch(term, result)))
             .setColor(0x00ae86),
         ],
       });
@@ -612,7 +811,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle(`Price history for ${sku}`)
-            .setDescription(formatResult(result))
+            .setDescription(truncateForDiscord(friendlyHistory(sku, result)))
             .setColor(0x00ae86),
         ],
       });
@@ -627,7 +826,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle(`Watch added for ${sku}`)
-            .setDescription(formatResult(result))
+            .setDescription(truncateForDiscord(friendlyAction(`Watch added for ${sku}`, result)))
             .setColor(0x00ae86),
         ],
       });
@@ -641,7 +840,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle(`Watch removed for ${sku}`)
-            .setDescription(formatResult(result))
+            .setDescription(truncateForDiscord(friendlyAction(`Watch removed for ${sku}`, result)))
             .setColor(0x00ae86),
         ],
       });
@@ -654,7 +853,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle('Watchlist')
-            .setDescription(formatResult(result))
+            .setDescription(truncateForDiscord(friendlyCollection('Watchlist', result)))
             .setColor(0x00ae86),
         ],
       });
@@ -667,7 +866,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle('Alerts')
-            .setDescription(formatResult(result))
+            .setDescription(truncateForDiscord(friendlyCollection('Alerts', result)))
             .setColor(0x00ae86),
         ],
       });
@@ -681,7 +880,7 @@ client.on('interactionCreate', async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle(`Alert ${id}`)
-            .setDescription(formatResult(result))
+            .setDescription(truncateForDiscord(friendlyAction(`Alert ${id}`, result)))
             .setColor(0x00ae86),
         ],
       });

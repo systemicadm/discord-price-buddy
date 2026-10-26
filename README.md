@@ -16,6 +16,7 @@ A Discord bot for approved users to manage PriceBuddy through API calls.
   - `!pb alert <id>`
 - Falls back across common PriceBuddy route names for price, history, watchlist, and alert requests
 - Calls a configured PriceBuddy API using an API base URL and optional bearer/API key
+- Renders command results as human-readable summaries instead of raw JSON payloads
 - Emits structured JSON logs for Discord connectivity, command handling, and PriceBuddy API request outcomes
 
 ## Setup
