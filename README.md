@@ -311,6 +311,11 @@ Runtime logs are emitted as newline-delimited JSON, which works well with Pelica
   - Incoming message/slash commands
   - Handler failures with context (user, guild, channel, command)
 
+## Process lifecycle
+- The bot handles `SIGTERM` and `SIGINT` for graceful shutdown.
+- On shutdown, it closes the Discord client session before exiting.
+- If shutdown hangs, the process force-exits after 10 seconds.
+
 ## Troubleshooting
 - Error: `PriceBuddy API request failed (404)` with HTML in logs
   - Cause: `PRICEBUDDY_API_URL` likely points at a website route instead of the API base path.

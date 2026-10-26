@@ -107,6 +107,49 @@ const client = new Client({
   ],
 });
 
+let shutdownInProgress = false;
+
+async function shutdownGracefully(signal) {
+  if (shutdownInProgress) {
+    log('warn', 'Shutdown already in progress, ignoring duplicate signal', { signal });
+    return;
+  }
+
+  shutdownInProgress = true;
+  log('info', 'Shutdown signal received, closing Discord client gracefully', { signal });
+
+  const hardStopTimer = setTimeout(() => {
+    log('error', 'Graceful shutdown timeout reached, forcing process exit', { signal, timeoutMs: 10000 });
+    process.exit(1);
+  }, 10000);
+  hardStopTimer.unref();
+
+  try {
+    if (client?.isReady()) {
+      log('info', 'Destroying Discord client session');
+    }
+
+    client.destroy();
+    clearTimeout(hardStopTimer);
+    log('info', 'Discord client shutdown complete');
+    process.exit(0);
+  } catch (error) {
+    log('error', 'Error during graceful shutdown', {
+      signal,
+      error: serializeError(error),
+    });
+    process.exit(1);
+  }
+}
+
+process.on('SIGTERM', () => {
+  void shutdownGracefully('SIGTERM');
+});
+
+process.on('SIGINT', () => {
+  void shutdownGracefully('SIGINT');
+});
+
 const approvedUserIds = new Set(
   (process.env.APPROVED_USER_IDS || '')
     .split(',')
