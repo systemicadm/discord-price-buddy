@@ -121,9 +121,34 @@ function isApiConfigured() {
   return Boolean(apiBaseUrl && apiKey);
 }
 
+function normalizeApiPath(path) {
+  const rawPath = String(path || '').trim();
+  if (!rawPath) {
+    return '';
+  }
+
+  const pathWithoutLeadingSlash = rawPath.replace(/^\/+/, '');
+  const basePath = new URL(`${apiBaseUrl}/`).pathname.replace(/^\/+|\/+$/g, '');
+
+  if (!basePath) {
+    return pathWithoutLeadingSlash;
+  }
+
+  if (pathWithoutLeadingSlash.toLowerCase() === basePath.toLowerCase()) {
+    return '';
+  }
+
+  if (pathWithoutLeadingSlash.toLowerCase().startsWith(`${basePath.toLowerCase()}/`)) {
+    return pathWithoutLeadingSlash.slice(basePath.length + 1);
+  }
+
+  return pathWithoutLeadingSlash;
+}
+
 function buildApiUrl(path, query = {}) {
   const base = apiBaseUrl.replace(/\/$/, '');
-  const url = new URL(path.startsWith('/') ? path : `/${path}`, `${base}/`);
+  const normalizedPath = normalizeApiPath(path);
+  const url = new URL(normalizedPath, `${base}/`);
 
   Object.entries(query).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') {
@@ -144,6 +169,7 @@ async function callPriceBuddyApi(path, method = 'GET', body = undefined, query =
   const startTime = Date.now();
   const url = buildApiUrl(path, query);
   const headers = {
+    Accept: 'application/json',
     'Content-Type': 'application/json',
   };
 
@@ -257,6 +283,8 @@ async function getPriceForSku(sku) {
 
 async function getStatus() {
   return tryApiRoutes([
+    '/client-config',
+    '/api/client-config',
     '/status',
     '/api/status',
     '/health',

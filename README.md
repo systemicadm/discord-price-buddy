@@ -341,7 +341,8 @@ Request failed: PriceBuddy API returned an HTML error page. Check PRICEBUDDY_API
 - `DISCORD_TOKEN`: Discord bot token
 - `DISCORD_CLIENT_ID`: Discord application ID used for slash command registration
 - `PRICEBUDDY_API_URL`: Base URL for the PriceBuddy API, e.g. `https://api.example.com` or `https://api.example.com/api`.
-  - This must be the API base path. If this points to a website route, `!pb status` can return a 404 HTML page.
+  - If your PriceBuddy instance serves API routes under `/api`, set this to `https://your-host/api`.
+  - The bot now preserves base-path prefixes (like `/api`) when building endpoint URLs.
 - `PRICEBUDDY_API_KEY`: API key or bearer token for the PriceBuddy API
 - `APPROVED_USER_IDS`: Comma-separated list of allowed Discord user IDs
 - `LOG_LEVEL`: Log verbosity (`error`, `warn`, `info`, or `debug`). Default is `info`.
@@ -366,6 +367,10 @@ Runtime logs are emitted as newline-delimited JSON, which works well with Pelica
 - Error: `PriceBuddy API request failed (404)` with HTML in logs
   - Cause: `PRICEBUDDY_API_URL` likely points at a website route instead of the API base path.
   - Fix: Set `PRICEBUDDY_API_URL` to the API base URL and retest `!pb status`.
+
+- Error: `PriceBuddy API request failed (403)` for `!pb status`
+  - Cause: PriceBuddy `client-config` endpoint requires a token with `client-config:read` ability (or all-access token).
+  - Fix: Recreate the API token in PriceBuddy with the required ability and update `PRICEBUDDY_API_KEY`.
 
 - Error: `Invalid Form Body content[BASE_TYPE_MAX_LENGTH]`
   - Cause: A very large error body was being echoed to Discord.
