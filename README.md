@@ -3,17 +3,7 @@ A Discord bot for approved users to manage PriceBuddy through API calls.
 
 ## Features
 - Restricts commands to a configured allowlist of Discord user IDs
-- Supports rich PriceBuddy actions via Discord messages and slash commands:
-  - `!pb status`
-  - `!pb sync`
-  - `!pb price <sku>`
-  - `!pb search <term>`
-  - `!pb history <sku>`
-  - `!pb watch <sku> [target]`
-  - `!pb unwatch <sku>`
-  - `!pb watchlist`
-  - `!pb alerts`
-  - `!pb alert <id>`
+- Supports both message commands (`!pb ...`) and slash commands (`/...`)
 - Uses PriceBuddy product-centric API routes for watchlist and alert-style workflows
 - Calls a configured PriceBuddy API using an API base URL and optional bearer/API key
 - Renders command results as human-readable summaries instead of raw JSON payloads
@@ -70,8 +60,8 @@ The bot supports both message commands (`!pb ...`) and slash commands (`/status`
 
 Notes:
 - Message command examples assume your prefix is `!pb`.
-- Most command results are the raw PriceBuddy API response formatted as JSON text.
-- Exact keys can vary depending on your PriceBuddy backend.
+- Command responses are summarized into human-readable text/embeds.
+- Underlying API fields can vary by PriceBuddy version and token abilities.
 
 ### `help`
 Shows available commands and quick usage hints.
@@ -100,12 +90,10 @@ Slash command:
 ```
 
 Expected return example:
-```json
-{
-  "status": "ok",
-  "service": "pricebuddy",
-  "timestamp": "2026-10-25T20:40:12Z"
-}
+```text
+Service status: ok
+Version: 1.0.57
+Capabilities: products_filter_url, products_filter_search, products_tags
 ```
 
 ### `sync`
@@ -122,12 +110,8 @@ Slash command:
 ```
 
 Expected return example:
-```json
-{
-  "accepted": true,
-  "jobId": "sync_12345",
-  "source": "discord"
-}
+```text
+Sync started: ok
 ```
 
 ### `price <sku>`
@@ -144,13 +128,11 @@ Slash command:
 ```
 
 Expected return example:
-```json
-{
-  "sku": "ABC-123",
-  "price": 19.99,
-  "currency": "USD",
-  "updatedAt": "2026-10-25T20:39:00Z"
-}
+```text
+Price for Wireless Mouse Pro
+Current: $19.99
+Store: Example Store
+Updated: 2026-10-25T20:39:00Z
 ```
 
 ### `search <term>`
@@ -167,19 +149,10 @@ Slash command:
 ```
 
 Expected return example:
-```json
-[
-  {
-    "sku": "MOUSE-001",
-    "name": "Wireless Mouse Pro",
-    "price": 29.99
-  },
-  {
-    "sku": "MOUSE-002",
-    "name": "Wireless Mouse Lite",
-    "price": 19.99
-  }
-]
+```text
+Found 2 result(s) for "wireless mouse":
+1. Wireless Mouse Pro ($29.99)
+2. Wireless Mouse Lite ($19.99)
 ```
 
 ### `history <sku>`
@@ -196,15 +169,11 @@ Slash command:
 ```
 
 Expected return example:
-```json
-{
-  "sku": "ABC-123",
-  "history": [
-    { "date": "2026-10-01", "price": 24.99 },
-    { "date": "2026-10-15", "price": 21.99 },
-    { "date": "2026-10-25", "price": 19.99 }
-  ]
-}
+```text
+History for ABC-123
+Entries: 3
+Latest: $19.99 (2026-10-25)
+Previous: $21.99 (2026-10-15)
 ```
 
 ### `watch <sku> [target]`
@@ -223,12 +192,8 @@ Slash command:
 ```
 
 Expected return example:
-```json
-{
-  "created": true,
-  "sku": "ABC-123",
-  "target": "15.00"
-}
+```text
+Watch created for ABC-123: Watch enabled for Wireless Mouse Pro
 ```
 
 ### `unwatch <sku>`
@@ -245,11 +210,8 @@ Slash command:
 ```
 
 Expected return example:
-```json
-{
-  "removed": true,
-  "sku": "ABC-123"
-}
+```text
+Removed watch for ABC-123: Watch disabled for Wireless Mouse Pro
 ```
 
 ### `watchlist`
@@ -266,11 +228,10 @@ Slash command:
 ```
 
 Expected return example:
-```json
-[
-  { "sku": "ABC-123", "target": "15.00" },
-  { "sku": "XYZ-999", "target": null }
-]
+```text
+Watchlist: 2 item(s)
+1. Wireless Mouse Pro (active)
+2. Wireless Mouse Lite (active)
 ```
 
 ### `alerts`
@@ -287,16 +248,9 @@ Slash command:
 ```
 
 Expected return example:
-```json
-[
-  {
-    "id": "alert_101",
-    "sku": "ABC-123",
-    "trigger": "price_below",
-    "value": 15.0,
-    "active": true
-  }
-]
+```text
+Alerts: 1 item(s)
+1. Wireless Mouse Pro (active)
 ```
 
 ### `alert <id>`
@@ -304,24 +258,17 @@ Returns one product detail (with insights) by product ID.
 
 Message command:
 ```text
-!pb alert alert_101
+!pb alert 42
 ```
 
 Slash command:
 ```text
-/alert id:alert_101
+/alert id:42
 ```
 
 Expected return example:
-```json
-{
-  "id": "alert_101",
-  "sku": "ABC-123",
-  "trigger": "price_below",
-  "value": 15.0,
-  "createdAt": "2026-10-20T10:00:00Z",
-  "active": true
-}
+```text
+Alert 42: ok
 ```
 
 ### Common command errors
