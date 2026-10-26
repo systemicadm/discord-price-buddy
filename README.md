@@ -316,6 +316,18 @@ Runtime logs are emitted as newline-delimited JSON, which works well with Pelica
 - On shutdown, it closes the Discord client session before exiting.
 - If shutdown hangs, the process force-exits after 10 seconds.
 
+### Pelican / Wings runtime settings
+If a server stays in `Starting` and never reaches `Running`, check your egg process settings:
+
+- **Startup command**: prefer `node index.js` (or an equivalent direct node command).
+- **Start configuration (`done`)**: set to `PB_BOT_READY`.
+  - The bot emits this marker on successful Discord ready/login.
+  - You can override the marker with env var `STARTUP_READY_MARKER` if needed.
+- **Stop command**: set to `^C` (or `^SIGTERM`).
+  - The bot now handles both signals and exits cleanly.
+
+If `done` is set to a string that never appears in logs, Pelican will keep the server in `Starting` and panel stop behavior can appear inconsistent.
+
 ## Troubleshooting
 - Error: `PriceBuddy API request failed (404)` with HTML in logs
   - Cause: `PRICEBUDDY_API_URL` likely points at a website route instead of the API base path.

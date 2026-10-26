@@ -17,6 +17,7 @@ const activeLogLevel = Object.prototype.hasOwnProperty.call(LOG_LEVELS, configur
   ? LOG_LEVELS[configuredLogLevel]
   : LOG_LEVELS.info;
 const logApiDetails = process.env.LOG_API_DETAILS === '1';
+const startupReadyMarker = process.env.STARTUP_READY_MARKER || 'PB_BOT_READY';
 const MAX_DISCORD_REPLY_LENGTH = 1900;
 let apiRequestCounter = 0;
 
@@ -704,6 +705,8 @@ client.on('ready', () => {
     userTag: client.user?.tag,
     userId: client.user?.id,
   });
+  // Plain startup marker for Pelican/Wings "done" detection.
+  console.log(startupReadyMarker);
   console.log(`Logged in as ${client.user.tag}`);
 });
 
