@@ -14,7 +14,7 @@ A Discord bot for approved users to manage PriceBuddy through API calls.
   - `!pb watchlist`
   - `!pb alerts`
   - `!pb alert <id>`
-- Falls back across common PriceBuddy route names for price, history, watchlist, and alert requests
+- Uses PriceBuddy product-centric API routes for watchlist and alert-style workflows
 - Calls a configured PriceBuddy API using an API base URL and optional bearer/API key
 - Renders command results as human-readable summaries instead of raw JSON payloads
 - Emits structured JSON logs for Discord connectivity, command handling, and PriceBuddy API request outcomes
@@ -208,7 +208,7 @@ Expected return example:
 ```
 
 ### `watch <sku> [target]`
-Creates a watch entry for a SKU. Optional target can be a price or note, depending on backend behavior.
+Enables notifications for a product by ID/title/SKU search text. Optional target sets `target_price`.
 
 Message command:
 ```text
@@ -232,7 +232,7 @@ Expected return example:
 ```
 
 ### `unwatch <sku>`
-Removes an existing watch for a SKU.
+Disables notifications for a product by ID/title/SKU search text.
 
 Message command:
 ```text
@@ -253,7 +253,7 @@ Expected return example:
 ```
 
 ### `watchlist`
-Lists all currently watched SKUs.
+Lists products from PriceBuddy (product-backed watch view).
 
 Message command:
 ```text
@@ -274,7 +274,7 @@ Expected return example:
 ```
 
 ### `alerts`
-Lists active alerts from PriceBuddy.
+Lists products that currently have watch-like notification settings enabled.
 
 Message command:
 ```text
@@ -300,7 +300,7 @@ Expected return example:
 ```
 
 ### `alert <id>`
-Returns one specific alert by ID.
+Returns one product detail (with insights) by product ID.
 
 Message command:
 ```text

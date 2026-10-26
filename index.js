@@ -310,45 +310,122 @@ async function getPriceHistory(sku) {
 
 async function getWatchlist() {
   return tryApiRoutes([
-    '/watchlist',
-    '/products/watchlist',
-    '/alerts/watchlist',
+    '/products',
+    '/api/products',
   ]);
 }
 
 async function addWatch(sku, target) {
-  const payload = { sku };
-  if (target) {
-    payload.target = target;
+  const product = await resolveProductForWatch(sku);
+  const payload = {
+    title: product.title || product.name || `Product ${product.id}`,
+    image: product.image || 'https://pricebuddy.systemicnet.com/favicon.ico',
+    paused: false,
+    notify_in_stock: true,
+    notify_on_change: true,
+  };
+
+  if (target !== undefined && target !== null && target !== '') {
+    const numericTarget = Number(target);
+    if (!Number.isFinite(numericTarget)) {
+      throw new Error('Target must be a number (for example: 19.99).');
+    }
+
+    payload.target_price = numericTarget;
   }
 
-  return tryApiRoutes([
-    '/watchlist',
-    '/products/watchlist',
-    `/watchlist/${encodeURIComponent(sku)}`,
-  ], 'POST', payload);
+  await tryApiRoutes([
+    `/products/${encodeURIComponent(product.id)}`,
+    `/api/products/${encodeURIComponent(product.id)}`,
+  ], 'PUT', payload);
+
+  return {
+    message: `Watch enabled for ${product.title || product.name || `product ${product.id}`}`,
+    product_id: product.id,
+    target_price: payload.target_price,
+  };
 }
 
 async function removeWatch(sku) {
-  return tryApiRoutes([
-    `/watchlist/${encodeURIComponent(sku)}`,
-    '/watchlist',
-  ], 'DELETE', { sku });
+  const product = await resolveProductForWatch(sku);
+  const payload = {
+    title: product.title || product.name || `Product ${product.id}`,
+    image: product.image || 'https://pricebuddy.systemicnet.com/favicon.ico',
+    notify_in_stock: false,
+    notify_on_change: false,
+  };
+
+  await tryApiRoutes([
+    `/products/${encodeURIComponent(product.id)}`,
+    `/api/products/${encodeURIComponent(product.id)}`,
+  ], 'PUT', payload);
+
+  return {
+    message: `Watch disabled for ${product.title || product.name || `product ${product.id}`}`,
+    product_id: product.id,
+  };
 }
 
 async function getAlerts() {
   return tryApiRoutes([
-    '/alerts',
-    '/notifications/alerts',
-    '/watchlist/alerts',
+    '/products',
+    '/api/products',
   ]);
 }
 
 async function getAlert(id) {
   return tryApiRoutes([
-    `/alerts/${encodeURIComponent(id)}`,
-    `/notifications/alerts/${encodeURIComponent(id)}`,
+    `/products/${encodeURIComponent(id)}?include=insights`,
+    `/api/products/${encodeURIComponent(id)}?include=insights`,
   ]);
+}
+
+async function resolveProductForWatch(identifier) {
+  const trimmedIdentifier = String(identifier || '').trim();
+  if (!trimmedIdentifier) {
+    throw new Error('A product identifier is required.');
+  }
+
+  if (/^\d+$/.test(trimmedIdentifier)) {
+    try {
+      const productById = await tryApiRoutes([
+        `/products/${encodeURIComponent(trimmedIdentifier)}`,
+        `/api/products/${encodeURIComponent(trimmedIdentifier)}`,
+      ]);
+      const unwrapped = unwrapData(productById);
+      if (unwrapped && typeof unwrapped === 'object') {
+        return unwrapped;
+      }
+    } catch (_error) {
+      // Fall back to search lookup when ID lookup fails.
+    }
+  }
+
+  const searchResult = await tryApiRoutes([
+    '/products',
+    '/api/products',
+  ], 'GET', undefined, {
+    'filter[search]': trimmedIdentifier,
+    per_page: 25,
+  });
+
+  const products = pickCollection(searchResult);
+  if (products.length === 0) {
+    throw new Error(`No product found for "${trimmedIdentifier}".`);
+  }
+
+  const exactMatch = products.find((product) => {
+    const candidates = [
+      product?.sku,
+      product?.title,
+      product?.name,
+      product?.id !== undefined ? String(product.id) : null,
+    ].filter(Boolean).map((value) => String(value).toLowerCase());
+
+    return candidates.includes(trimmedIdentifier.toLowerCase());
+  });
+
+  return exactMatch || products[0];
 }
 
 function ensureApprovedUser(interactionOrMessage) {
@@ -540,7 +617,17 @@ function friendlyHistory(sku, result) {
 }
 
 function friendlyCollection(title, result) {
-  const items = pickCollection(result);
+  let items = pickCollection(result);
+
+  if (title.toLowerCase() === 'alerts') {
+    items = items.filter((item) => Boolean(
+      item?.notify_on_change
+      || item?.notify_in_stock
+      || item?.target_price !== undefined
+      || item?.target !== undefined
+    ));
+  }
+
   if (items.length === 0) {
     return `${title}: none found.`;
   }
