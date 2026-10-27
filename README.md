@@ -154,7 +154,11 @@ Expected return example:
 ```text
 Found 2 result(s) for "wireless mouse":
 1. Wireless Mouse Pro ($29.99)
+  Store: Example Store
+  URL: https://example-store.com/wireless-mouse-pro
 2. Wireless Mouse Lite ($19.99)
+  Store: Example Store
+  URL: https://example-store.com/wireless-mouse-lite
 ```
 
 ### `history <sku>`

@@ -624,7 +624,15 @@ function friendlySearch(term, result) {
   items.slice(0, 8).forEach((item, index) => {
     const title = item?.title || item?.name || item?.sku || 'Untitled product';
     const price = formatMoney(item?.price ?? item?.current_price ?? item?.currentPrice, item?.currency);
+    const store = item?.store?.name || item?.store_name || item?.store;
+    const url = item?.url || item?.product_url || item?.productUrl || item?.link || item?.store_url || item?.store?.url;
     lines.push(`${index + 1}. ${title} (${price})`);
+    if (store) {
+      lines.push(`   Store: ${store}`);
+    }
+    if (url) {
+      lines.push(`   URL: ${url}`);
+    }
   });
 
   if (items.length > 8) {
