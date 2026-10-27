@@ -73,7 +73,7 @@ Message command:
 
 Expected return:
 ```text
-Available commands: status, sync, add <url>, price <sku>, search <term>, history <sku>, watch <sku> [target], unwatch <sku>, watchlist, alerts, alert <id>
+Available commands: status, stores, sync, add <url>, price <sku>, search <term>, history <sku>, watch <sku> [target], unwatch <sku>, watchlist, alerts, alert <id>
 ```
 
 ### `status`
@@ -94,6 +94,27 @@ Expected return example:
 Service status: ok
 Version: 1.0.57
 Capabilities: products_filter_url, products_filter_search, products_tags
+```
+
+### `stores`
+Lists configured store names from PriceBuddy.
+
+Message command:
+```text
+!pb stores
+```
+
+Slash command:
+```text
+/stores
+```
+
+Expected return example:
+```text
+Configured stores: 3
+1. Amazon
+2. CoolStuffInc
+3. Walmart
 ```
 
 ### `sync`

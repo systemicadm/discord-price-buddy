@@ -333,6 +333,26 @@ async function getStatus() {
   ]);
 }
 
+async function getStores() {
+  try {
+    return await tryApiRoutes([
+      '/stores',
+      '/api/stores',
+    ]);
+  } catch (storesError) {
+    const statusResult = await getStatus();
+    const storeNames = extractStoreNames(statusResult);
+    if (storeNames.length > 0) {
+      return {
+        source: 'client-config',
+        stores: storeNames.map((name) => ({ name })),
+      };
+    }
+
+    throw storesError;
+  }
+}
+
 async function searchProducts(term) {
   const listResult = await tryApiRoutes([
     '/products',
@@ -813,6 +833,80 @@ function pickCollection(result) {
   return [];
 }
 
+function extractStoreNames(result) {
+  const payload = unwrapData(result);
+  const storeNames = new Set();
+
+  const addStoreName = (value) => {
+    if (typeof value !== 'string') {
+      return;
+    }
+    const trimmed = value.trim();
+    if (trimmed) {
+      storeNames.add(trimmed);
+    }
+  };
+
+  const addFromItem = (item) => {
+    if (!item || typeof item !== 'object') {
+      return;
+    }
+
+    const url = extractProductUrl(item);
+    const store = firstNonEmptyString([
+      item?.name,
+      item?.store_name,
+      item?.title,
+      item?.label,
+      item?.slug,
+      item?.domain,
+      item?.hostname,
+      extractStoreName(item, url),
+    ]);
+
+    addStoreName(store);
+  };
+
+  const candidates = [];
+  if (Array.isArray(payload)) {
+    candidates.push(payload);
+  }
+
+  if (payload && typeof payload === 'object') {
+    const directKeys = [
+      'stores',
+      'store_configs',
+      'retailers',
+      'merchants',
+      'vendors',
+      'items',
+      'results',
+      'data',
+      'products',
+    ];
+
+    for (const key of directKeys) {
+      if (Array.isArray(payload[key])) {
+        candidates.push(payload[key]);
+      }
+    }
+
+    if (payload.capabilities && typeof payload.capabilities === 'object') {
+      for (const [key, value] of Object.entries(payload.capabilities)) {
+        if (Array.isArray(value) && /(store|retailer|merchant|vendor)/i.test(key)) {
+          candidates.push(value);
+        }
+      }
+    }
+  }
+
+  for (const collection of candidates) {
+    collection.forEach(addFromItem);
+  }
+
+  return Array.from(storeNames).sort((a, b) => a.localeCompare(b));
+}
+
 function hasSearchStoreOrUrl(item) {
   if (!item || typeof item !== 'object') {
     return false;
@@ -902,6 +996,24 @@ function friendlySearch(term, result) {
 
   if (items.length > 8) {
     lines.push(`...and ${items.length - 8} more`);
+  }
+
+  return lines.join('\n');
+}
+
+function friendlyStores(result) {
+  const names = extractStoreNames(result);
+  if (names.length === 0) {
+    return 'No configured stores were returned by the API.';
+  }
+
+  const lines = [`Configured stores: ${names.length}`];
+  names.slice(0, 30).forEach((name, index) => {
+    lines.push(`${index + 1}. ${name}`);
+  });
+
+  if (names.length > 30) {
+    lines.push(`...and ${names.length - 30} more`);
   }
 
   return lines.join('\n');
@@ -1070,18 +1182,24 @@ client.on('messageCreate', async (message) => {
     const command = args[0]?.toLowerCase();
 
     if (!command) {
-      await message.reply('Usage: `!pb help` | `!pb status` | `!pb sync` | `!pb add <url>` | `!pb price <sku>` | `!pb search <term>` | `!pb history <sku>` | `!pb watch <sku> [target]` | `!pb unwatch <sku>` | `!pb watchlist` | `!pb alerts`');
+      await message.reply('Usage: `!pb help` | `!pb status` | `!pb stores` | `!pb sync` | `!pb add <url>` | `!pb price <sku>` | `!pb search <term>` | `!pb history <sku>` | `!pb watch <sku> [target]` | `!pb unwatch <sku>` | `!pb watchlist` | `!pb alerts`');
       return;
     }
 
     if (command === 'help') {
-      await message.reply('Available commands: `status`, `sync`, `add <url>`, `price <sku>`, `search <term>`, `history <sku>`, `watch <sku> [target]`, `unwatch <sku>`, `watchlist`, `alerts`, `alert <id>`');
+      await message.reply('Available commands: `status`, `stores`, `sync`, `add <url>`, `price <sku>`, `search <term>`, `history <sku>`, `watch <sku> [target]`, `unwatch <sku>`, `watchlist`, `alerts`, `alert <id>`');
       return;
     }
 
     if (command === 'status') {
       const result = await getStatus();
       await message.reply(truncateForDiscord(friendlyStatus(result)));
+      return;
+    }
+
+    if (command === 'stores') {
+      const result = await getStores();
+      await message.reply(truncateForDiscord(friendlyStores(result)));
       return;
     }
 
@@ -1221,6 +1339,19 @@ client.on('interactionCreate', async (interaction) => {
           new EmbedBuilder()
             .setTitle('PriceBuddy status')
             .setDescription(truncateForDiscord(friendlyStatus(result)))
+            .setColor(0x00ae86),
+        ],
+      });
+      return;
+    }
+
+    if (interaction.commandName === 'stores') {
+      const result = await getStores();
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('Configured stores')
+            .setDescription(truncateForDiscord(friendlyStores(result)))
             .setColor(0x00ae86),
         ],
       });
@@ -1382,12 +1513,13 @@ async function registerSlashCommands() {
   }
 
   log('info', 'Registering Discord slash commands', {
-    commandCount: 11,
+    commandCount: 12,
     clientId: process.env.DISCORD_CLIENT_ID,
   });
 
   const commands = [
     { name: 'status', description: 'Check the PriceBuddy service status' },
+    { name: 'stores', description: 'List configured stores' },
     {
       name: 'add',
       description: 'Add a product by URL',
@@ -1481,6 +1613,7 @@ module.exports = {
   ensureApprovedUser,
   getPriceForSku,
   getStatus,
+  getStores,
   getPriceHistory,
   getWatchlist,
   getAlerts,
