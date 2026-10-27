@@ -97,7 +97,9 @@ Capabilities: products_filter_url, products_filter_search, products_tags
 ```
 
 ### `sync`
-Triggers a PriceBuddy sync job.
+Attempts to trigger a PriceBuddy sync job.
+
+Note: this depends on your PriceBuddy instance exposing a compatible sync endpoint.
 
 Message command:
 ```text
@@ -115,7 +117,7 @@ Sync started: ok
 ```
 
 ### `price <sku>`
-Returns current pricing data for a specific SKU/product ID.
+Returns current pricing data for a product lookup key (product ID, SKU, or title search text).
 
 Message command:
 ```text
@@ -156,7 +158,7 @@ Found 2 result(s) for "wireless mouse":
 ```
 
 ### `history <sku>`
-Returns historical pricing timeline for a SKU.
+Returns historical pricing data when available for a product lookup key (product ID, SKU, or title search text).
 
 Message command:
 ```text

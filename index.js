@@ -318,11 +318,8 @@ async function tryApiRoutes(routes, method = 'GET', body = undefined, query = {}
 }
 
 async function getPriceForSku(sku) {
-  return tryApiRoutes([
-    `/prices/${encodeURIComponent(sku)}`,
-    `/products/${encodeURIComponent(sku)}`,
-    `/catalog/${encodeURIComponent(sku)}`,
-  ]);
+  const product = await resolveProductForWatch(sku);
+  return getProductDetail(product.id, true);
 }
 
 async function getStatus() {
@@ -338,18 +335,17 @@ async function getStatus() {
 
 async function searchProducts(term) {
   return tryApiRoutes([
-    '/products/search',
-    '/search/products',
-    '/prices/search',
-  ], 'GET', undefined, { q: term, query: term, term });
+    '/products',
+    '/api/products',
+  ], 'GET', undefined, {
+    'filter[search]': term,
+    per_page: 25,
+  });
 }
 
 async function getPriceHistory(sku) {
-  return tryApiRoutes([
-    `/prices/${encodeURIComponent(sku)}/history`,
-    `/products/${encodeURIComponent(sku)}/history`,
-    `/products/${encodeURIComponent(sku)}/price-history`,
-  ]);
+  const product = await resolveProductForWatch(sku);
+  return getProductDetail(product.id, true);
 }
 
 async function getWatchlist() {
@@ -418,10 +414,15 @@ async function getAlerts() {
 }
 
 async function getAlert(id) {
+  return getProductDetail(id, true);
+}
+
+async function getProductDetail(productId, includeInsights = false) {
+  const query = includeInsights ? { include: 'insights' } : {};
   return tryApiRoutes([
-    `/products/${encodeURIComponent(id)}?include=insights`,
-    `/api/products/${encodeURIComponent(id)}?include=insights`,
-  ]);
+    `/products/${encodeURIComponent(productId)}`,
+    `/api/products/${encodeURIComponent(productId)}`,
+  ], 'GET', undefined, query);
 }
 
 async function resolveProductForWatch(identifier) {
@@ -567,8 +568,12 @@ function friendlyPrice(sku, result) {
   }
 
   const title = item.title || item.name || `Product ${sku}`;
-  const price = item.price ?? item.current_price ?? item.currentPrice;
-  const currency = item.currency || item.currency_code;
+  const price = item.price
+    ?? item.current_price
+    ?? item.currentPrice
+    ?? item.insights?.stats?.current
+    ?? item.insights?.bestPrice;
+  const currency = item.currency || item.currency_code || item.insights?.currency;
   const store = item.store?.name || item.store_name || item.store;
   const updated = item.updated_at || item.updatedAt || item.last_checked_at;
 
@@ -633,11 +638,39 @@ function friendlyHistory(sku, result) {
   const payload = unwrapData(result);
   const history = Array.isArray(payload?.history)
     ? payload.history
-    : Array.isArray(payload)
-      ? payload
-      : [];
+    : Array.isArray(payload?.price_history)
+      ? payload.price_history
+      : Array.isArray(payload?.prices)
+        ? payload.prices
+        : Array.isArray(payload?.price_cache)
+          ? payload.price_cache
+          : Array.isArray(payload)
+            ? payload
+            : [];
 
   if (history.length === 0) {
+    const title = payload?.title || payload?.name || sku;
+    const current = payload?.insights?.stats?.current;
+    const best = payload?.insights?.bestPrice;
+    const currency = payload?.currency || payload?.currency_code || payload?.insights?.currency;
+
+    if (current !== undefined || best !== undefined) {
+      const lines = [
+        `History for ${title}`,
+      ];
+
+      if (current !== undefined) {
+        lines.push(`Current: ${formatMoney(current, currency)}`);
+      }
+
+      if (best !== undefined) {
+        lines.push(`Best observed: ${formatMoney(best, currency)}`);
+      }
+
+      lines.push('No detailed history array returned by this endpoint.');
+      return lines.join('\n');
+    }
+
     return `No price history found for ${sku}.`;
   }
 
