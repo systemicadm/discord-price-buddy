@@ -430,7 +430,16 @@ async function addProductByUrl(productUrl) {
     throw new Error('The product URL is invalid. Example: https://example.com/product/123');
   }
 
+  const parsedUrl = new URL(normalizedUrl);
+  const pathLeaf = decodeURIComponent(parsedUrl.pathname.split('/').filter(Boolean).pop() || '').trim();
+  const derivedTitle = pathLeaf
+    ? pathLeaf.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
+    : `Product from ${parsedUrl.hostname}`;
+
   const payloadCandidates = [
+    { title: derivedTitle, url: normalizedUrl },
+    { title: derivedTitle, product_url: normalizedUrl },
+    { title: derivedTitle, link: normalizedUrl },
     { url: normalizedUrl },
     { product_url: normalizedUrl },
     { link: normalizedUrl },
