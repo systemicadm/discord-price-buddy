@@ -417,6 +417,40 @@ async function getAlert(id) {
   return getProductDetail(id, true);
 }
 
+async function addProductByUrl(productUrl) {
+  const rawUrl = String(productUrl || '').trim();
+  if (!rawUrl) {
+    throw new Error('A product URL is required.');
+  }
+
+  let normalizedUrl;
+  try {
+    normalizedUrl = new URL(rawUrl).toString();
+  } catch (_error) {
+    throw new Error('The product URL is invalid. Example: https://example.com/product/123');
+  }
+
+  const payloadCandidates = [
+    { url: normalizedUrl },
+    { product_url: normalizedUrl },
+    { link: normalizedUrl },
+  ];
+
+  let lastError = null;
+  for (const payload of payloadCandidates) {
+    try {
+      return await tryApiRoutes([
+        '/products',
+        '/api/products',
+      ], 'POST', payload);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Failed to add product by URL.');
+}
+
 async function getProductDetail(productId, includeInsights = false) {
   const query = includeInsights ? { include: 'insights' } : {};
   return tryApiRoutes([
@@ -805,12 +839,12 @@ client.on('messageCreate', async (message) => {
     const command = args[0]?.toLowerCase();
 
     if (!command) {
-      await message.reply('Usage: `!pb help` | `!pb status` | `!pb sync` | `!pb price <sku>` | `!pb search <term>` | `!pb history <sku>` | `!pb watch <sku> [target]` | `!pb unwatch <sku>` | `!pb watchlist` | `!pb alerts`');
+      await message.reply('Usage: `!pb help` | `!pb status` | `!pb sync` | `!pb add <url>` | `!pb price <sku>` | `!pb search <term>` | `!pb history <sku>` | `!pb watch <sku> [target]` | `!pb unwatch <sku>` | `!pb watchlist` | `!pb alerts`');
       return;
     }
 
     if (command === 'help') {
-      await message.reply('Available commands: `status`, `sync`, `price <sku>`, `search <term>`, `history <sku>`, `watch <sku> [target]`, `unwatch <sku>`, `watchlist`, `alerts`, `alert <id>`');
+      await message.reply('Available commands: `status`, `sync`, `add <url>`, `price <sku>`, `search <term>`, `history <sku>`, `watch <sku> [target]`, `unwatch <sku>`, `watchlist`, `alerts`, `alert <id>`');
       return;
     }
 
@@ -823,6 +857,18 @@ client.on('messageCreate', async (message) => {
     if (command === 'sync') {
       const result = await callPriceBuddyApi('/sync', 'POST', { source: 'discord' });
       await message.reply(truncateForDiscord(friendlyAction('Sync started', result)));
+      return;
+    }
+
+    if (command === 'add') {
+      const productUrl = args[1];
+      if (!productUrl) {
+        await message.reply('Usage: `!pb add <url>`');
+        return;
+      }
+
+      const result = await addProductByUrl(productUrl);
+      await message.reply(truncateForDiscord(friendlyAction('Product add requested', result)));
       return;
     }
 
@@ -1066,6 +1112,20 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply('Sync job has been triggered.');
       return;
     }
+
+    if (interaction.commandName === 'add') {
+      const productUrl = interaction.options.getString('url');
+      const result = await addProductByUrl(productUrl);
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('Add product')
+            .setDescription(truncateForDiscord(friendlyAction('Product add requested', result)))
+            .setColor(0x00ae86),
+        ],
+      });
+      return;
+    }
   } catch (error) {
     log('error', 'Discord slash command failed', {
       userId: interaction.user?.id,
@@ -1091,12 +1151,17 @@ async function registerSlashCommands() {
   }
 
   log('info', 'Registering Discord slash commands', {
-    commandCount: 10,
+    commandCount: 11,
     clientId: process.env.DISCORD_CLIENT_ID,
   });
 
   const commands = [
     { name: 'status', description: 'Check the PriceBuddy service status' },
+    {
+      name: 'add',
+      description: 'Add a product by URL',
+      options: [{ name: 'url', type: 3, description: 'Product URL', required: true }],
+    },
     {
       name: 'price',
       description: 'Look up a product price',
@@ -1189,6 +1254,7 @@ module.exports = {
   getWatchlist,
   getAlerts,
   getAlert,
+  addProductByUrl,
   isApiConfigured,
   searchProducts,
 };

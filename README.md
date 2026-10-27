@@ -73,7 +73,7 @@ Message command:
 
 Expected return:
 ```text
-Available commands: status, sync, price <sku>, search <term>, history <sku>, watch <sku> [target], unwatch <sku>, watchlist, alerts, alert <id>
+Available commands: status, sync, add <url>, price <sku>, search <term>, history <sku>, watch <sku> [target], unwatch <sku>, watchlist, alerts, alert <id>
 ```
 
 ### `status`
@@ -114,6 +114,24 @@ Slash command:
 Expected return example:
 ```text
 Sync started: ok
+```
+
+### `add <url>`
+Attempts to add a new product by URL.
+
+Message command:
+```text
+!pb add https://example-store.com/wireless-mouse-pro
+```
+
+Slash command:
+```text
+/add url:https://example-store.com/wireless-mouse-pro
+```
+
+Expected return example:
+```text
+Product add requested: ok
 ```
 
 ### `price <sku>`
