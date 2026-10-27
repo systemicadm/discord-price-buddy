@@ -638,6 +638,14 @@ function extractStoreName(item, productUrl) {
     item?.source?.name,
     item?.latest_price?.store_name,
     item?.latestPrice?.store_name,
+    item?.price_cache?.[0]?.store_name,
+    item?.price_cache?.[0]?.store,
+    item?.prices?.[0]?.store_name,
+    item?.prices?.[0]?.store,
+    item?.history?.[0]?.store_name,
+    item?.history?.[0]?.store,
+    item?.monitors?.[0]?.store_name,
+    item?.monitors?.[0]?.store,
     insightsStore?.name,
   ]);
 
@@ -657,11 +665,15 @@ function extractStoreName(item, productUrl) {
 }
 
 function extractProductUrl(item) {
-  return firstNonEmptyString([
+  const direct = firstNonEmptyString([
     item?.url,
     item?.product_url,
     item?.productUrl,
     item?.link,
+    item?.source_url,
+    item?.sourceUrl,
+    item?.affiliate_url,
+    item?.affiliateUrl,
     item?.store_url,
     item?.store?.url,
     item?.merchant?.url,
@@ -673,9 +685,51 @@ function extractProductUrl(item) {
     item?.links?.product,
     item?.latest_price?.url,
     item?.latestPrice?.url,
+    item?.price_cache?.[0]?.url,
+    item?.prices?.[0]?.url,
+    item?.history?.[0]?.url,
+    item?.monitors?.[0]?.url,
     item?.insights?.url,
     item?.insights?.bestUrl,
   ]);
+
+  if (direct) {
+    return direct;
+  }
+
+  return findFirstHttpUrl(item);
+}
+
+function findFirstHttpUrl(value, depth = 0) {
+  if (depth > 3 || value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    const candidate = value.trim();
+    return /^https?:\/\//i.test(candidate) ? candidate : null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = findFirstHttpUrl(entry, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  if (typeof value === 'object') {
+    for (const nested of Object.values(value)) {
+      const found = findFirstHttpUrl(nested, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return null;
 }
 
 function friendlyStatus(result) {
@@ -764,24 +818,7 @@ function hasSearchStoreOrUrl(item) {
     return false;
   }
 
-  const hasUrl = Boolean(
-    item.url
-    || item.product_url
-    || item.productUrl
-    || item.link
-    || item.store_url
-    || item.store?.url,
-  );
-
-  const hasStore = Boolean(
-    item.store?.name
-    || item.store_name
-    || item.store
-    || item.merchant?.name
-    || item.retailer?.name,
-  );
-
-  return hasUrl || hasStore;
+  return Boolean(extractProductUrl(item) || extractStoreName(item, null));
 }
 
 function applySearchEnrichment(result, enrichedById) {
