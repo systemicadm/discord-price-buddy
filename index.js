@@ -576,6 +576,76 @@ function formatMoney(value, currency) {
   }
 }
 
+function firstNonEmptyString(values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function extractStoreName(item, productUrl) {
+  const insightsStore = Array.isArray(item?.insights?.stores) && item.insights.stores.length > 0
+    ? item.insights.stores[0]
+    : null;
+
+  const store = firstNonEmptyString([
+    item?.store?.name,
+    item?.store_name,
+    item?.store,
+    item?.merchant?.name,
+    item?.merchant_name,
+    item?.retailer?.name,
+    item?.retailer_name,
+    item?.vendor?.name,
+    item?.vendor_name,
+    item?.shop?.name,
+    item?.shop_name,
+    item?.source?.name,
+    item?.latest_price?.store_name,
+    item?.latestPrice?.store_name,
+    insightsStore?.name,
+  ]);
+
+  if (store) {
+    return store;
+  }
+
+  if (!productUrl) {
+    return null;
+  }
+
+  try {
+    return new URL(productUrl).hostname.replace(/^www\./i, '');
+  } catch (_error) {
+    return null;
+  }
+}
+
+function extractProductUrl(item) {
+  return firstNonEmptyString([
+    item?.url,
+    item?.product_url,
+    item?.productUrl,
+    item?.link,
+    item?.store_url,
+    item?.store?.url,
+    item?.merchant?.url,
+    item?.retailer?.url,
+    item?.vendor?.url,
+    item?.source?.url,
+    item?.product?.url,
+    item?.links?.self,
+    item?.links?.product,
+    item?.latest_price?.url,
+    item?.latestPrice?.url,
+    item?.insights?.url,
+    item?.insights?.bestUrl,
+  ]);
+}
+
 function friendlyStatus(result) {
   const payload = unwrapData(result);
   if (!payload || typeof payload !== 'object') {
@@ -666,9 +736,18 @@ function friendlySearch(term, result) {
   const lines = [`Found ${items.length} result(s) for "${term}":`];
   items.slice(0, 8).forEach((item, index) => {
     const title = item?.title || item?.name || item?.sku || 'Untitled product';
-    const price = formatMoney(item?.price ?? item?.current_price ?? item?.currentPrice, item?.currency);
-    const store = item?.store?.name || item?.store_name || item?.store;
-    const url = item?.url || item?.product_url || item?.productUrl || item?.link || item?.store_url || item?.store?.url;
+    const price = formatMoney(
+      item?.price
+        ?? item?.current_price
+        ?? item?.currentPrice
+        ?? item?.latest_price?.price
+        ?? item?.latestPrice?.price
+        ?? item?.insights?.stats?.current
+        ?? item?.insights?.bestPrice,
+      item?.currency || item?.currency_code || item?.latest_price?.currency || item?.latestPrice?.currency || item?.insights?.currency,
+    );
+    const url = extractProductUrl(item);
+    const store = extractStoreName(item, url);
     lines.push(`${index + 1}. ${title} (${price})`);
     if (store) {
       lines.push(`   Store: ${store}`);
