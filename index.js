@@ -334,13 +334,45 @@ async function getStatus() {
 }
 
 async function searchProducts(term) {
-  return tryApiRoutes([
+  const listResult = await tryApiRoutes([
     '/products',
     '/api/products',
   ], 'GET', undefined, {
     'filter[search]': term,
     per_page: 25,
   });
+
+  const items = pickCollection(listResult);
+  if (items.length === 0) {
+    return listResult;
+  }
+
+  const needsEnrichment = items.some((item) => !hasSearchStoreOrUrl(item));
+  if (!needsEnrichment) {
+    return listResult;
+  }
+
+  const enrichedById = new Map();
+  const candidates = items.slice(0, 8).filter((item) => item?.id !== undefined && item?.id !== null);
+  await Promise.all(candidates.map(async (item) => {
+    try {
+      const detail = unwrapData(await getProductDetail(item.id, true));
+      if (detail && typeof detail === 'object') {
+        enrichedById.set(String(item.id), detail);
+      }
+    } catch (error) {
+      log('debug', 'Search result enrichment skipped for item', {
+        productId: item?.id,
+        error: serializeError(error),
+      });
+    }
+  }));
+
+  if (enrichedById.size === 0) {
+    return listResult;
+  }
+
+  return applySearchEnrichment(listResult, enrichedById);
 }
 
 async function getPriceHistory(sku) {
@@ -725,6 +757,80 @@ function pickCollection(result) {
   }
 
   return [];
+}
+
+function hasSearchStoreOrUrl(item) {
+  if (!item || typeof item !== 'object') {
+    return false;
+  }
+
+  const hasUrl = Boolean(
+    item.url
+    || item.product_url
+    || item.productUrl
+    || item.link
+    || item.store_url
+    || item.store?.url,
+  );
+
+  const hasStore = Boolean(
+    item.store?.name
+    || item.store_name
+    || item.store
+    || item.merchant?.name
+    || item.retailer?.name,
+  );
+
+  return hasUrl || hasStore;
+}
+
+function applySearchEnrichment(result, enrichedById) {
+  const payload = unwrapData(result);
+  if (Array.isArray(payload)) {
+    return payload.map((item) => mergeSearchItemWithDetail(item, enrichedById));
+  }
+
+  if (payload && typeof payload === 'object') {
+    if (Array.isArray(payload.items)) {
+      return {
+        ...payload,
+        items: payload.items.map((item) => mergeSearchItemWithDetail(item, enrichedById)),
+      };
+    }
+
+    if (Array.isArray(payload.results)) {
+      return {
+        ...payload,
+        results: payload.results.map((item) => mergeSearchItemWithDetail(item, enrichedById)),
+      };
+    }
+  }
+
+  return result;
+}
+
+function mergeSearchItemWithDetail(item, enrichedById) {
+  if (!item || typeof item !== 'object' || item.id === undefined || item.id === null) {
+    return item;
+  }
+
+  const detail = enrichedById.get(String(item.id));
+  if (!detail || typeof detail !== 'object') {
+    return item;
+  }
+
+  return {
+    ...detail,
+    ...item,
+    store: item.store ?? detail.store,
+    store_name: item.store_name ?? detail.store_name,
+    url: item.url ?? detail.url,
+    product_url: item.product_url ?? detail.product_url,
+    link: item.link ?? detail.link,
+    latest_price: item.latest_price ?? detail.latest_price,
+    latestPrice: item.latestPrice ?? detail.latestPrice,
+    insights: item.insights ?? detail.insights,
+  };
 }
 
 function friendlySearch(term, result) {
